@@ -1,21 +1,37 @@
 """
 FastAPI application for Stack Overflow 2025 Developer Salary Prediction.
-Serves predictions from a trained sklearn Pipeline (ColumnTransformer + GradientBoostingRegressor).
+
+This API serves predictions from a trained scikit-learn Pipeline
+(ColumnTransformer + GradientBoostingRegressor).
 """
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from typing import Optional
-import joblib
-import numpy as np
 from pathlib import Path
 import logging
+import joblib
+import pandas as pd
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
 
-MODEL_PATH = Path(__file__).resolve().parent.parent / "stackoverflow_salary_model.pkl"
+# ============================================================
+# Configuration
+# ============================================================
+
+# The model file must be in the same folder as main.py
+MODEL_PATH = Path(__file__).resolve().parent / "stackoverflow_salary_model.pkl"
+
+
+# ============================================================
+# Logging
+# ============================================================
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# Allowed / mapped categories
+# ============================================================
 
 TOP_20_COUNTRIES = {
     "United States of America",
@@ -40,6 +56,7 @@ TOP_20_COUNTRIES = {
     "Japan",
 }
 
+
 TOP_10_DEV_TYPES = {
     "Developer, full-stack",
     "Developer, back-end",
@@ -54,92 +71,136 @@ TOP_10_DEV_TYPES = {
     "Engineering manager",
 }
 
+
 ALL_FEATURES = [
-    "Age", "EdLevel", "RemoteWork", "Country", "Industry", "OrgSize",
-    "ICorPM", "DevType", "WorkExp", "YearsCode", "AISent", "AISelect",
-    "AIThreat", "AIComplex", "ToolCountWork", "JobSat", "MainBranch",
+    "Age",
+    "EdLevel",
+    "RemoteWork",
+    "Country",
+    "Industry",
+    "OrgSize",
+    "ICorPM",
+    "DevType",
+    "WorkExp",
+    "YearsCode",
+    "AISent",
+    "AISelect",
+    "AIThreat",
+    "AIComplex",
+    "ToolCountWork",
+    "JobSat",
+    "MainBranch",
 ]
 
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# App
-# ---------------------------------------------------------------------------
+# ============================================================
+# FastAPI Application
+# ============================================================
 
 app = FastAPI(
     title="Stack Overflow 2025 Salary Predictor",
-    description="Predict yearly developer salary (USD) using a trained Gradient Boosting model on Stack Overflow 2025 survey data.",
+    description=(
+        "API for predicting yearly developer salary in USD "
+        "using Stack Overflow 2025 survey data."
+    ),
     version="1.0.0",
 )
 
-# Lazy-loaded model singleton
+
+# ============================================================
+# Model cache
+# ============================================================
+
 _model = None
 
 
 def get_model():
-    """Load and cache the model on first call."""
+    """
+    Load the trained model once and keep it in memory.
+    """
+
     global _model
+
     if _model is None:
+
         if not MODEL_PATH.exists():
-            logger.error("Model file not found at %s", MODEL_PATH)
-            raise RuntimeError(f"Model file not found at {MODEL_PATH}")
+            logger.error(
+                "Model file not found: %s",
+                MODEL_PATH
+            )
+
+            raise RuntimeError(
+                f"Model file not found: {MODEL_PATH}"
+            )
+
+        logger.info(
+            "Loading model from: %s",
+            MODEL_PATH
+        )
+
         _model = joblib.load(MODEL_PATH)
-        logger.info("Model loaded successfully from %s", MODEL_PATH)
+
+        logger.info("Model loaded successfully.")
+
     return _model
 
 
-# ---------------------------------------------------------------------------
-# Pydantic Schema
-# ---------------------------------------------------------------------------
+# ============================================================
+# Request Schema
+# ============================================================
 
 class SalaryPredictionInput(BaseModel):
-    """Input schema for salary prediction with all 17 features."""
 
     Age: str = Field(
         ...,
         description="Age range",
         examples=["25-34 years old"],
     )
+
     EdLevel: str = Field(
         ...,
         description="Highest level of education",
-        examples=["Bachelor's degree (B.A., B.S., B.Eng., etc.)"],
+        examples=[
+            "Bachelor's degree (B.A., B.S., B.Eng., etc.)"
+        ],
     )
+
     RemoteWork: str = Field(
         ...,
         description="Remote work arrangement",
         examples=["Remote"],
     )
+
     Country: str = Field(
         ...,
         description="Country of residence",
         examples=["United States of America"],
     )
+
     Industry: str = Field(
         ...,
         description="Industry sector",
         examples=["Software Development"],
     )
+
     OrgSize: str = Field(
         ...,
         description="Organization size",
         examples=["100 to 499 employees"],
     )
+
     ICorPM: str = Field(
         ...,
         description="Individual contributor or people manager",
         examples=["Individual contributor"],
     )
+
     DevType: str = Field(
         ...,
         description="Developer type / role",
         examples=["Developer, full-stack"],
     )
+
     WorkExp: float = Field(
         ...,
         ge=0,
@@ -147,6 +208,7 @@ class SalaryPredictionInput(BaseModel):
         description="Years of professional work experience",
         examples=[5.0],
     )
+
     YearsCode: float = Field(
         ...,
         ge=0,
@@ -154,26 +216,33 @@ class SalaryPredictionInput(BaseModel):
         description="Total years coding",
         examples=[8.0],
     )
+
     AISent: str = Field(
         ...,
         description="Sentiment toward AI tools",
         examples=["Favorable"],
     )
+
     AISelect: str = Field(
         ...,
         description="AI tool usage frequency",
         examples=["Yes, I use AI tools daily"],
     )
+
     AIThreat: str = Field(
         ...,
         description="Whether AI is seen as a threat to jobs",
         examples=["No"],
     )
+
     AIComplex: str = Field(
         ...,
         description="Perception of AI handling complex tasks",
-        examples=["Good, but not great at handling complex tasks"],
+        examples=[
+            "Good, but not great at handling complex tasks"
+        ],
     )
+
     ToolCountWork: float = Field(
         ...,
         ge=0,
@@ -181,133 +250,248 @@ class SalaryPredictionInput(BaseModel):
         description="Number of tools used at work",
         examples=[10.0],
     )
+
     JobSat: float = Field(
         ...,
         ge=0,
         le=10,
-        description="Job satisfaction score (0-10)",
+        description="Job satisfaction score",
         examples=[7.0],
     )
+
     MainBranch: str = Field(
         ...,
         description="Primary professional identity",
-        examples=["I am a developer by profession"],
+        examples=[
+            "I am a developer by profession"
+        ],
     )
 
+
+# ============================================================
+# Response Schema
+# ============================================================
 
 class SalaryPredictionOutput(BaseModel):
-    """Output schema for salary prediction."""
+
     predicted_salary_usd: float = Field(
-        ..., description="Predicted yearly salary in USD"
+        ...,
+        description="Predicted yearly salary in USD"
     )
+
     input_features: dict = Field(
-        ..., description="The features used for prediction (after mapping)"
+        ...,
+        description="Features used for prediction"
     )
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+# ============================================================
+# Helper Functions
+# ============================================================
 
 def map_country(country: str) -> str:
-    """Map country to top-20 or 'Other'."""
-    return country if country in TOP_20_COUNTRIES else "Other"
+    """
+    Keep top-20 countries.
+    Map all other countries to 'Other'.
+    """
+
+    return (
+        country
+        if country in TOP_20_COUNTRIES
+        else "Other"
+    )
 
 
 def map_devtype(devtype: str) -> str:
-    """Map DevType to top-10 or 'Other'."""
-    return devtype if devtype in TOP_10_DEV_TYPES else "Other"
+    """
+    Keep supported developer types.
+    Map all others to 'Other'.
+    """
+
+    return (
+        devtype
+        if devtype in TOP_10_DEV_TYPES
+        else "Other"
+    )
 
 
-# ---------------------------------------------------------------------------
-# Endpoints
-# ---------------------------------------------------------------------------
+# ============================================================
+# Root Endpoint
+# ============================================================
 
-@app.get("/", tags=["info"])
+@app.get("/", tags=["Info"])
 async def root():
-    """Return project information."""
+
     return {
         "project": "Stack Overflow 2025 Developer Salary Predictor",
         "version": "1.0.0",
-        "description": (
-            "Predicts yearly developer salary (USD) using a Gradient Boosting Regressor "
-            "trained on Stack Overflow 2025 survey data (17 features)."
+        "status": "online",
+        "model": (
+            "ColumnTransformer + "
+            "GradientBoostingRegressor"
         ),
-        "model": "ColumnTransformer + GradientBoostingRegressor (sklearn Pipeline)",
         "endpoints": {
-            "predict": "POST /predict  — submit features, get salary prediction",
-            "health": "GET /health  — service health check",
+            "documentation": "/docs",
+            "health": "/health",
+            "prediction": "POST /predict",
         },
         "features": ALL_FEATURES,
     }
 
 
-@app.get("/health", tags=["info"])
+# ============================================================
+# Health Endpoint
+# ============================================================
+
+@app.get("/health", tags=["Info"])
 async def health():
-    """Health check endpoint."""
+
     try:
+
         model = get_model()
+
         return {
             "status": "healthy",
             "model_loaded": model is not None,
         }
+
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Model not available: {exc}")
+
+        logger.exception(
+            "Health check failed"
+        )
+
+        raise HTTPException(
+            status_code=503,
+            detail=f"Model not available: {exc}",
+        )
 
 
-@app.post("/predict", response_model=SalaryPredictionOutput, tags=["prediction"])
-async def predict(data: SalaryPredictionInput):
-    """
-    Predict yearly salary in USD based on developer survey features.
+# ============================================================
+# Prediction Endpoint
+# ============================================================
 
-    Country and DevType are automatically mapped to 'Other' if they are not
-    in the top-20 / top-10 lists the model was trained on.
-    """
+@app.post(
+    "/predict",
+    response_model=SalaryPredictionOutput,
+    tags=["Prediction"],
+)
+async def predict(
+    data: SalaryPredictionInput
+):
+
+    # --------------------------------------------------------
+    # Load model
+    # --------------------------------------------------------
+
     try:
+
         model = get_model()
+
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Model not available: {exc}")
 
-    # Apply Country / DevType mapping
-    mapped_country = map_country(data.Country)
-    mapped_devtype = map_devtype(data.DevType)
+        logger.exception(
+            "Model loading failed"
+        )
 
-    # Build feature dict in model's expected column order
+        raise HTTPException(
+            status_code=503,
+            detail=f"Model not available: {exc}",
+        )
+
+    # --------------------------------------------------------
+    # Map Country and Developer Type
+    # --------------------------------------------------------
+
+    mapped_country = map_country(
+        data.Country
+    )
+
+    mapped_devtype = map_devtype(
+        data.DevType
+    )
+
+    # --------------------------------------------------------
+    # Prepare features
+    # --------------------------------------------------------
+
     features = {
+
         "Age": data.Age,
+
         "EdLevel": data.EdLevel,
+
         "RemoteWork": data.RemoteWork,
+
         "Country": mapped_country,
+
         "Industry": data.Industry,
+
         "OrgSize": data.OrgSize,
+
         "ICorPM": data.ICorPM,
+
         "DevType": mapped_devtype,
+
         "WorkExp": data.WorkExp,
+
         "YearsCode": data.YearsCode,
+
         "AISent": data.AISent,
+
         "AISelect": data.AISelect,
+
         "AIThreat": data.AIThreat,
+
         "AIComplex": data.AIComplex,
+
         "ToolCountWork": data.ToolCountWork,
+
         "JobSat": data.JobSat,
+
         "MainBranch": data.MainBranch,
     }
 
-    # Create a single-row DataFrame in correct column order
-    import pandas as pd
-    df = pd.DataFrame([features], columns=ALL_FEATURES)
+    # --------------------------------------------------------
+    # Create DataFrame
+    # --------------------------------------------------------
+
+    df = pd.DataFrame(
+        [features],
+        columns=ALL_FEATURES
+    )
+
+    # --------------------------------------------------------
+    # Make prediction
+    # --------------------------------------------------------
 
     try:
+
         prediction = model.predict(df)
-        predicted_salary = round(float(prediction[0]), 2)
+
+        predicted_salary = round(
+            float(prediction[0]),
+            2
+        )
+
     except Exception as exc:
-        logger.exception("Prediction failed")
+
+        logger.exception(
+            "Prediction failed"
+        )
+
         raise HTTPException(
             status_code=422,
             detail=f"Prediction failed: {exc}",
         )
 
+    # --------------------------------------------------------
+    # Return result
+    # --------------------------------------------------------
+
     return SalaryPredictionOutput(
+
         predicted_salary_usd=predicted_salary,
+
         input_features=features,
     )
