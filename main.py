@@ -18,7 +18,7 @@ import pandas as pd
 # ============================================================
 
 # The model file must be in the same folder as main.py
-MODEL_PATH = Path(__file__).resolve().parent / "stackoverflow_salary_model.pkl"
+MODEL_PATH = Path(__file__).resolve().parent / "Stackoverflow_salary_model.pkl"
 
 
 # ============================================================
